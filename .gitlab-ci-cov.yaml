@@ -1,0 +1,32 @@
+# Build and push container image on GitLab.com using Docker-in-Docker.
+# Include from main .gitlab-ci.yml when needed:
+# include:
+#   - local: .gitlab-ci-cov.yaml
+
+stages:
+  - build
+
+build_container_image:
+  stage: build
+  image: docker:24.0.9
+  services:
+    - name: docker:24.0.9-dind
+      command: ["--tls=false"]
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_DRIVER: overlay2
+    IMAGE_REPO: $CI_REGISTRY_IMAGE
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+  script:
+    - export IMAGE_TAG="${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHORT_SHA}"
+    - docker build -f Dockerfile -t "$IMAGE_REPO:$IMAGE_TAG" .
+    - docker push "$IMAGE_REPO:$IMAGE_TAG"
+    - |
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+        docker tag "$IMAGE_REPO:$IMAGE_TAG" "$IMAGE_REPO:latest"
+        docker push "$IMAGE_REPO:latest"
+      fi
+  rules:
+    - if: $CI_COMMIT_TAG
